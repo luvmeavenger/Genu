@@ -1,2 +1,0 @@
-# Genu
-A number guesser
