@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mind Reader - The Number Guesser</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: radial-gradient(circle at top left, #0f172a, #020617);
+            color: #ffffff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            overflow-x: hidden;
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #a855f7);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+            filter: brightness(1.1);
+        }
+
+        .fade-in {
+            animation: fadeIn 0.6s ease-out forwards;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .guess-text {
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Main Game View -->
+    <main id="game-page" class="w-full max-w-md p-6 fade-in">
+        <div class="text-center mb-8">
+            <h2 class="text-indigo-400 font-bold tracking-widest text-xs uppercase">MindReader AI Engine</h2>
+        </div>
+
+        <div class="glass-card p-8 text-center space-y-6">
+            <div id="start-screen">
+                <h1 class="text-4xl font-black mb-4">I can read your mind.</h1>
+                <p class="text-slate-400 mb-8 leading-relaxed">Think of a number between <span class="text-white font-bold">1 and 100</span>. Don't tell me what it is. I'll find it.</p>
+                <button onclick="startGame()" class="btn-primary w-full py-4 rounded-2xl font-bold text-lg">
+                    Begin Analysis
+                </button>
+            </div>
+
+            <div id="guess-screen" class="hidden space-y-8">
+                <div class="text-xs uppercase tracking-[0.2em] text-slate-500 font-medium">System Prediction</div>
+                <div id="guess-display" class="text-9xl font-black text-white guess-text">50</div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <button onclick="handleResponse('less')" class="bg-white/5 hover:bg-white/10 border border-white/10 py-5 rounded-2xl transition-all font-semibold">
+                        Smaller (Less)
+                    </button>
+                    <button onclick="handleResponse('far')" class="bg-white/5 hover:bg-white/10 border border-white/10 py-5 rounded-2xl transition-all font-semibold">
+                        Bigger (Far)
+                    </button>
+                </div>
+                
+                <button onclick="handleResponse('correct')" class="w-full btn-primary py-4 rounded-2xl font-bold shadow-lg">
+                    That's My Number
+                </button>
+
+                <div class="text-[10px] text-slate-500 uppercase tracking-widest">Processing Attempt #<span id="attempt-count">1</span></div>
+            </div>
+
+            <div id="result-screen" class="hidden">
+                <div class="text-6xl mb-6">🎯</div>
+                <h2 class="text-3xl font-black mb-2">Target Locked</h2>
+                <p id="final-message" class="text-slate-400 mb-8"></p>
+                <button onclick="location.reload()" class="w-full py-4 rounded-2xl font-bold bg-white/5 hover:bg-white/10 border border-white/10 transition-colors">
+                    Reset Engine
+                </button>
+                
+                <div class="mt-8 pt-6 border-t border-white/5 text-[9px] text-slate-600 uppercase leading-relaxed tracking-wider">
+                    Disclaimer: This is really not an AI though.
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Hidden Logs View (Accessible via URL parameter) -->
+    <main id="logs-page" class="hidden w-full max-w-2xl p-6 fade-in">
+        <div class="glass-card p-8">
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-2xl font-black">Central Log Database</h2>
+                <span class="px-3 py-1 rounded-full bg-indigo-500/20 text-indigo-400 text-[10px] font-bold uppercase tracking-tighter">Admin Access</span>
+            </div>
+            <div class="overflow-hidden rounded-xl bg-black/20">
+                <table class="w-full text-left text-sm">
+                    <thead>
+                        <tr class="text-slate-500 border-b border-white/5">
+                            <th class="p-4 font-bold uppercase text-[10px]">Identifier</th>
+                            <th class="p-4 font-bold uppercase text-[10px]">Session</th>
+                            <th class="p-4 font-bold uppercase text-[10px]">Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log-table-body">
+                        <!-- Fetched Logs -->
+                    </tbody>
+                </table>
+            </div>
+            <button onclick="window.location.search = ''" class="mt-6 text-xs text-slate-500 hover:text-white underline">Return to Game</button>
+        </div>
+    </main>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = JSON.parse(window.__firebase_config || '{}');
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'number-guess-v2';
+
+        let min = 1, max = 100, currentGuess = 50, attempts = 1, user = null;
+
+        // Initialize and handle "Routing"
+        async function init() {
+            try {
+                const cred = await signInAnonymously(auth);
+                user = cred.user;
+                
+                // Check "URL" for /logs simulation
+                const params = new URLSearchParams(window.location.search);
+                if (params.get('view') === 'logs') {
+                    showLogs();
+                } else {
+                    logVisit();
+                }
+            } catch (err) { console.error(err); }
+        }
+
+        async function logVisit() {
+            if (!user) return;
+            try {
+                await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'visits'), {
+                    uid: user.uid,
+                    timestamp: serverTimestamp(),
+                    sessionId: Math.random().toString(36).substring(2, 8).toUpperCase()
+                });
+            } catch (e) {}
+        }
+
+        function showLogs() {
+            document.getElementById('game-page').classList.add('hidden');
+            document.getElementById('logs-page').classList.remove('hidden');
+            
+            const q = collection(db, 'artifacts', appId, 'public', 'data', 'visits');
+            onSnapshot(q, (snapshot) => {
+                const tbody = document.getElementById('log-table-body');
+                tbody.innerHTML = '';
+                const docs = [];
+                snapshot.forEach(doc => docs.push(doc.data()));
+                docs.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+
+                docs.forEach(data => {
+                    const row = document.createElement('tr');
+                    row.className = 'border-b border-white/5 hover:bg-white/5 transition-colors';
+                    row.innerHTML = `
+                        <td class="p-4 font-mono text-xs text-indigo-400">${data.uid.substring(0, 12)}...</td>
+                        <td class="p-4 text-slate-400">${data.sessionId}</td>
+                        <td class="p-4 text-slate-500 text-xs">${data.timestamp ? new Date(data.timestamp.seconds * 1000).toLocaleTimeString() : 'Pending'}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            }, (err) => {
+                console.error("Firestore read error", err);
+            });
+        }
+
+        // Game Logic
+        window.startGame = () => {
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('guess-screen').classList.remove('hidden');
+        };
+
+        window.handleResponse = (type) => {
+            const display = document.getElementById('guess-display');
+            if (type === 'correct') {
+                document.getElementById('guess-screen').classList.add('hidden');
+                document.getElementById('result-screen').classList.remove('hidden');
+                document.getElementById('final-message').innerText = `I successfully identified ${currentGuess} within ${attempts} cycles of interaction.`;
+                return;
+            }
+
+            if (type === 'far') min = currentGuess + 1;
+            else max = currentGuess - 1;
+
+            if (min > max) {
+                location.reload(); 
+                return;
+            }
+
+            currentGuess = Math.floor((min + max) / 2);
+            attempts++;
+            
+            display.innerText = currentGuess;
+            document.getElementById('attempt-count').innerText = attempts;
+            display.style.transform = 'scale(0.8)';
+            setTimeout(() => display.style.transform = 'scale(1)', 100);
+        };
+
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
+
